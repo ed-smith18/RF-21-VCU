@@ -1109,8 +1109,8 @@ int main(void) {
  8000c76:	220a      	movs	r2, #10
  8000c78:	705a      	strb	r2, [r3, #1]
 
-	//code not working starting here
-		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+	//Send out CAN message
+	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
  8000c7a:	4b22      	ldr	r3, [pc, #136]	; (8000d04 <main+0x11c>)
  8000c7c:	4a20      	ldr	r2, [pc, #128]	; (8000d00 <main+0x118>)
  8000c7e:	491f      	ldr	r1, [pc, #124]	; (8000cfc <main+0x114>)
@@ -1119,7 +1119,7 @@ int main(void) {
  8000c86:	4603      	mov	r3, r0
  8000c88:	2b00      	cmp	r3, #0
  8000c8a:	d001      	beq.n	8000c90 <main+0xa8>
-			Error_Handler();
+		Error_Handler();
  8000c8c:	f000 fca8 	bl	80015e0 <Error_Handler>
 	/* add queues, ... */
 	/* USER CODE END RTOS_QUEUES */
@@ -2576,6 +2576,7 @@ void startUART_Task(void const *argument) {
  8001538:	4a1d      	ldr	r2, [pc, #116]	; (80015b0 <startUART_Task+0x118>)
  800153a:	6053      	str	r3, [r2, #4]
 
+		//send out APPS values + APPS Pedal Position over UART
 		sprintf(msg,
  800153c:	4b1b      	ldr	r3, [pc, #108]	; (80015ac <startUART_Task+0x114>)
  800153e:	6819      	ldr	r1, [r3, #0]

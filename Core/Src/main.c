@@ -168,10 +168,13 @@ int main(void) {
 	TxData[0] = 50;
 	TxData[1] = 10;
 
-	//code not working starting here
-		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-			Error_Handler();
-		}
+	//Send out CAN message
+	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+		Error_Handler();
+	}
+
+	//Ready to Drive check (returns true if ready and false if not ready)
+	//Ready_to_Drive();
 
 	/* USER CODE END 2 */
 
@@ -699,14 +702,13 @@ static void MX_GPIO_Init(void) {
 static bool Ready_to_Drive(void) {
 
 	for (;;) {
-		//checking if start button is pressed and brakes are pressed at the same time
+		//checking if brakes are pressed & start button is pressed at the same time
 		if ((bpsVal >= bpsThreshold)
 				&& (!HAL_GPIO_ReadPin(GPIOC, Start_Button_Pin))) {
 			return true;
-		}
+		} //end if
 
 		return false;
-
 	} //end for loop
 
 } //end Ready_to_Drive()
@@ -754,6 +756,7 @@ void startUART_Task(void const *argument) {
 		apps_PP[0] = 0.0833 * appsVal[0];
 		apps_PP[1] = -0.03339 * appsVal[1] + 136.7;
 
+		//send out APPS values + APPS Pedal Position over UART
 		sprintf(msg,
 				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu\r\n",
 				appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
