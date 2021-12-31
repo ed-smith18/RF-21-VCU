@@ -63,6 +63,7 @@ UART_HandleTypeDef huart2;
 
 osThreadId ledTaskHandle;
 osThreadId uartTaskHandle;
+osThreadId Torque_CommandHandle;
 /* USER CODE BEGIN PV */
 uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
@@ -85,6 +86,7 @@ static void MX_ADC3_Init(void);
 static void MX_CAN1_Init(void);
 void startLEDTask(void const *argument);
 void startUART_Task(void const *argument);
+void startTorqueCommand(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
@@ -151,7 +153,8 @@ int main(void) {
 	HAL_ADC_Start_DMA(&hadc3, &bpsVal, 1); //start the ADC for Brake Pressure Sensor in DMA mode
 	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 in DMA mode
 
-	HAL_CAN_Start(&hcan1); //Start the CAN module
+	//Start the CAN module
+	HAL_CAN_Start(&hcan1);
 
 	//Activate the CAN notification
 	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
@@ -164,14 +167,6 @@ int main(void) {
 	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
 	TxHeader.RTR = CAN_RTR_DATA;
 	TxHeader.StdId = 0x446;	//CAN ID of this device
-
-	TxData[0] = 50;
-	TxData[1] = 10;
-
-	//Send out CAN message
-	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-		Error_Handler();
-	}
 
 	//Ready to Drive check (returns true if ready and false if not ready)
 	//Ready_to_Drive();
@@ -202,6 +197,10 @@ int main(void) {
 	/* definition and creation of uartTask */
 	osThreadDef(uartTask, startUART_Task, osPriorityNormal, 0, 256);
 	uartTaskHandle = osThreadCreate(osThread(uartTask), NULL);
+
+	/* definition and creation of Torque_Command */
+	osThreadDef(Torque_Command, startTorqueCommand, osPriorityRealtime, 0, 256);
+	Torque_CommandHandle = osThreadCreate(osThread(Torque_Command), NULL);
 
 	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
@@ -762,8 +761,42 @@ void startUART_Task(void const *argument) {
 				appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
 		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 		osDelay(100);
+
 	}
 	/* USER CODE END startUART_Task */
+}
+
+/* USER CODE BEGIN Header_startTorqueCommand */
+/**
+ * @brief Function implementing the Torque_Command thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_startTorqueCommand */
+void startTorqueCommand(void const *argument) {
+	/* USER CODE BEGIN startTorqueCommand */
+//	TxData[0] = 50;
+//	TxData[1] = 10;
+
+	/* Infinite loop */
+	for (;;) {
+		//Send out CAN message
+//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+//				!= HAL_OK) {
+//			Error_Handler();
+//		}
+
+		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+
+		/**
+		 * Need to send CAN messages before motor controller times out
+		 * Recommended settings are to send out CAN message every half the timeout
+		 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
+		 * Need to configure actual timeout period for motor controller using DTI tool.
+		 */
+		osDelay(500);
+	}
+	/* USER CODE END startTorqueCommand */
 }
 
 /**
