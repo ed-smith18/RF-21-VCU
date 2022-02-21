@@ -69,7 +69,9 @@ uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
 
 uint32_t bpsVal; //to store Brake Pressure Sensor value
-uint32_t bpsThreshold = 0; //need to set to store the signal value which corresponds to brakes being pressed
+uint32_t bpsThreshold = 3500; //need to set to store the signal value which corresponds to brakes being pressed
+
+bool ready_to_drive = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -90,6 +92,7 @@ void startTorqueCommand(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
+static void APPS_Transfer_Function(uint32_t *appsVal_0, uint32_t *appsVal_1);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -171,7 +174,11 @@ int main(void) {
 	TxHeader.TransmitGlobalTime = DISABLE;
 
 	//Ready to Drive check (returns true if ready and false if not ready)
-	//Ready_to_Drive();
+//	ready_to_drive = Ready_to_Drive();
+//
+//	if(ready_to_drive) {
+//		HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
+//	}
 
 	/* USER CODE END 2 */
 
@@ -627,7 +634,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : PE3 */
 	GPIO_InitStruct.Pin = GPIO_PIN_3;
@@ -704,15 +712,24 @@ static bool Ready_to_Drive(void) {
 
 	for (;;) {
 		//checking if brakes are pressed & start button is pressed at the same time
+		//not working when using bpsVal, but only working when using appsVal[0]
 		if ((bpsVal >= bpsThreshold)
 				&& (!HAL_GPIO_ReadPin(GPIOC, Start_Button_Pin))) {
 			return true;
 		} //end if
 
-		return false;
 	} //end for loop
 
+	return false; //shouldn't get to here
+
 } //end Ready_to_Drive()
+
+static void APPS_Transfer_Function(uint32_t *appsVal_0, uint32_t *appsVal_1) {
+
+	apps_PP[0] = 0.06 * (*appsVal_0) - 107.06;
+	apps_PP[1] = 0.04 * (*appsVal_1) - 49.76;
+
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_startLEDTask */
@@ -754,12 +771,11 @@ void startUART_Task(void const *argument) {
 			strcpy(startBtn, "Not Pressed");
 		}
 
-		apps_PP[0] = 0.0833 * appsVal[0];
-		apps_PP[1] = -0.03339 * appsVal[1] + 136.7;
+		APPS_Transfer_Function(&appsVal[0], &appsVal[1]);
 
 		//send out APPS values + APPS Pedal Position over UART
 		sprintf(msg,
-				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu\r\n",
+				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
 				appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
 		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 		osDelay(100);
@@ -782,14 +798,14 @@ void startTorqueCommand(void const *argument) {
 	for (;;) {
 		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 
-		TxData[0] = 20;
-		TxData[1] = 1;
-
-		//Send out CAN message
-		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-				!= HAL_OK) {
-			Error_Handler();
-		}
+//		TxData[0] = 20;
+//		TxData[1] = 1;
+//
+//		//Send out CAN message
+//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+//				!= HAL_OK) {
+//			Error_Handler();
+//		}
 
 		/**
 		 * Need to send CAN messages before motor controller times out
