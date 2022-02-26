@@ -92,7 +92,7 @@ void startTorqueCommand(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
-static void APPS_Transfer_Function(uint32_t *appsVal_0, uint32_t *appsVal_1);
+static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -166,14 +166,14 @@ int main(void) {
 	}
 
 	//Setting Required Data Values for CAN frame
-	TxHeader.DLC = 2;	//data length in bytes
+	TxHeader.DLC = 8;	//data length in bytes
 	TxHeader.ExtId = 0;
 	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
 	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
 	TxHeader.StdId = 0x21;	//CAN ID of this device
 	TxHeader.TransmitGlobalTime = DISABLE;
 
-	//Ready to Drive check (returns true if ready and false if not ready)
+//	Ready to Drive check (returns true if ready and false if not ready)
 //	ready_to_drive = Ready_to_Drive();
 //
 //	if(ready_to_drive) {
@@ -208,9 +208,8 @@ int main(void) {
 	uartTaskHandle = osThreadCreate(osThread(uartTask), NULL);
 
 	/* definition and creation of Torque_Command */
-	osThreadDef(Torque_Command, startTorqueCommand, osPriorityRealtime, 0, 256);
-	Torque_CommandHandle = osThreadCreate(osThread(Torque_Command), NULL);
-
+//	osThreadDef(Torque_Command, startTorqueCommand, osPriorityRealtime, 0, 256);
+//	Torque_CommandHandle = osThreadCreate(osThread(Torque_Command), NULL);
 	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
 	/* USER CODE END RTOS_THREADS */
@@ -634,8 +633,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
-			GPIO_PIN_RESET);
+	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : PE3 */
 	GPIO_InitStruct.Pin = GPIO_PIN_3;
@@ -724,10 +722,10 @@ static bool Ready_to_Drive(void) {
 
 } //end Ready_to_Drive()
 
-static void APPS_Transfer_Function(uint32_t *appsVal_0, uint32_t *appsVal_1) {
+static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
 
-	apps_PP[0] = 0.06 * (*appsVal_0) - 107.06;
-	apps_PP[1] = 0.04 * (*appsVal_1) - 49.76;
+	apps_PP[0] = 0.05 * (*appsVal_0) - 19.95;
+	apps_PP[1] = 0.03 * (*appsVal_1) - 11.43;
 
 }
 /* USER CODE END 4 */
@@ -771,7 +769,7 @@ void startUART_Task(void const *argument) {
 			strcpy(startBtn, "Not Pressed");
 		}
 
-		APPS_Transfer_Function(&appsVal[0], &appsVal[1]);
+		APPS_Mapping(&appsVal[0], &appsVal[1]);
 
 		//send out APPS values + APPS Pedal Position over UART
 		sprintf(msg,
@@ -796,7 +794,7 @@ void startTorqueCommand(void const *argument) {
 
 	/* Infinite loop */
 	for (;;) {
-		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+//		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 
 //		TxData[0] = 20;
 //		TxData[1] = 1;
