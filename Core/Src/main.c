@@ -64,6 +64,7 @@ UART_HandleTypeDef huart2;
 osThreadId ledTaskHandle;
 osThreadId uartTaskHandle;
 osThreadId Torque_CommandHandle;
+osThreadId BPS_Limit_CheckHandle;
 /* USER CODE BEGIN PV */
 uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
@@ -89,6 +90,7 @@ static void MX_CAN1_Init(void);
 void startLEDTask(void const *argument);
 void startUART_Task(void const *argument);
 void startTorqueCommand(void const *argument);
+void startBPSCheck(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
@@ -208,8 +210,13 @@ int main(void) {
 	uartTaskHandle = osThreadCreate(osThread(uartTask), NULL);
 
 	/* definition and creation of Torque_Command */
-//	osThreadDef(Torque_Command, startTorqueCommand, osPriorityRealtime, 0, 256);
-//	Torque_CommandHandle = osThreadCreate(osThread(Torque_Command), NULL);
+	osThreadDef(Torque_Command, startTorqueCommand, osPriorityRealtime, 0, 256);
+	Torque_CommandHandle = osThreadCreate(osThread(Torque_Command), NULL);
+
+	/* definition and creation of BPS_Limit_Check */
+	osThreadDef(BPS_Limit_Check, startBPSCheck, osPriorityHigh, 0, 128);
+	BPS_Limit_CheckHandle = osThreadCreate(osThread(BPS_Limit_Check), NULL);
+
 	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
 	/* USER CODE END RTOS_THREADS */
@@ -633,7 +640,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : PE3 */
 	GPIO_InitStruct.Pin = GPIO_PIN_3;
@@ -727,7 +735,8 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
 	apps_PP[0] = 0.05 * (*appsVal_0) - 19.95;
 	apps_PP[1] = 0.03 * (*appsVal_1) - 11.43;
 
-}
+} //end APPS_Mapping()
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_startLEDTask */
@@ -810,11 +819,31 @@ void startTorqueCommand(void const *argument) {
 		 * Recommended settings are to send out CAN message every half the timeout
 		 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
 		 * Need to configure actual timeout period for motor controller using DTI tool.
-		 * We will set it to 500ms for now.
+		 * We will set it to 250ms for now.
 		 */
-		osDelay(500);
+		osDelay(250);
 	}
 	/* USER CODE END startTorqueCommand */
+}
+
+/* USER CODE BEGIN Header_startBPSCheck */
+/**
+ * @brief Function implementing the BPS_Limit_Check thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_startBPSCheck */
+void startBPSCheck(void const *argument) {
+	/* USER CODE BEGIN startBPSCheck */
+	/* Infinite loop */
+	for (;;) {
+		if ((bpsVal < 500) || (bpsVal > 3900)) {
+			//shutdown power to motor
+		}
+
+		osDelay(100);
+	}
+	/* USER CODE END startBPSCheck */
 }
 
 /**
