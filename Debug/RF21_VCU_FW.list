@@ -2505,7 +2505,7 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
  80014be:	6078      	str	r0, [r7, #4]
  80014c0:	6039      	str	r1, [r7, #0]
 
-	apps_PP[0] = 0.05 * (*appsVal_0) - 19.95;
+	apps_PP[0] = 0.0518 * (*appsVal_0) - 29.53;
  80014c2:	687b      	ldr	r3, [r7, #4]
  80014c4:	681b      	ldr	r3, [r3, #0]
  80014c6:	4618      	mov	r0, r3
@@ -2528,7 +2528,7 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
  80014f4:	4603      	mov	r3, r0
  80014f6:	4a16      	ldr	r2, [pc, #88]	; (8001550 <APPS_Mapping+0x98>)
  80014f8:	6013      	str	r3, [r2, #0]
-	apps_PP[1] = 0.03 * (*appsVal_1) - 11.43;
+	apps_PP[1] = 0.038 * (*appsVal_1) - 35.25;
  80014fa:	683b      	ldr	r3, [r7, #0]
  80014fc:	681b      	ldr	r3, [r3, #0]
  80014fe:	4618      	mov	r0, r3
@@ -2559,15 +2559,15 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
  8001538:	bd80      	pop	{r7, pc}
  800153a:	bf00      	nop
  800153c:	f3af 8000 	nop.w
- 8001540:	eb851eb8 	.word	0xeb851eb8
- 8001544:	3f9eb851 	.word	0x3f9eb851
- 8001548:	f5c28f5c 	.word	0xf5c28f5c
- 800154c:	4026dc28 	.word	0x4026dc28
+ 8001540:	6a7ef9db 	.word	0x6a7ef9db
+ 8001544:	3fa374bc 	.word	0x3fa374bc
+ 8001548:	00000000 	.word	0x00000000
+ 800154c:	4041a000 	.word	0x4041a000
  8001550:	200042d0 	.word	0x200042d0
- 8001554:	9999999a 	.word	0x9999999a
- 8001558:	3fa99999 	.word	0x3fa99999
- 800155c:	33333333 	.word	0x33333333
- 8001560:	4033f333 	.word	0x4033f333
+ 8001554:	93dd97f6 	.word	0x93dd97f6
+ 8001558:	3faa8587 	.word	0x3faa8587
+ 800155c:	147ae148 	.word	0x147ae148
+ 8001560:	403d87ae 	.word	0x403d87ae
 
 08001564 <startLEDTask>:
  * @brief  Function implementing the ledTask thread.

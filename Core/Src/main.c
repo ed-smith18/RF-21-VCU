@@ -732,8 +732,8 @@ static bool Ready_to_Drive(void) {
 
 static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
 
-	apps_PP[0] = 0.05 * (*appsVal_0) - 19.95;
-	apps_PP[1] = 0.03 * (*appsVal_1) - 11.43;
+	apps_PP[0] = 0.0518 * (*appsVal_0) - 29.53;
+	apps_PP[1] = 0.038 * (*appsVal_1) - 35.25;
 
 } //end APPS_Mapping()
 
