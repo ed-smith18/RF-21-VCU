@@ -639,6 +639,10 @@ static void MX_GPIO_Init(void) {
 			GPIO_PIN_SET);
 
 	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port, Ready_to_Drive_Sound_Pin,
+			GPIO_PIN_RESET);
+
+	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
 			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
 			GPIO_PIN_RESET);
@@ -676,6 +680,13 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+	/*Configure GPIO pin : Ready_to_Drive_Sound_Pin */
+	GPIO_InitStruct.Pin = Ready_to_Drive_Sound_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(Ready_to_Drive_Sound_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pin : PB2 */
 	GPIO_InitStruct.Pin = GPIO_PIN_2;
@@ -721,6 +732,7 @@ static bool Ready_to_Drive(void) {
 		//not working when using bpsVal, but only working when using appsVal[0]
 		if ((bpsVal >= bpsThreshold)
 				&& (!HAL_GPIO_ReadPin(GPIOC, Start_Button_Pin))) {
+			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port, Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
 			return true;
 		} //end if
 
