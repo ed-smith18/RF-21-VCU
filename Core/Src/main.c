@@ -65,6 +65,7 @@ osThreadId ledTaskHandle;
 osThreadId uartTaskHandle;
 osThreadId Torque_CommandHandle;
 osThreadId BPS_Limit_CheckHandle;
+osTimerId implausibility_TimerHandle;
 /* USER CODE BEGIN PV */
 uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
@@ -91,6 +92,7 @@ void startLEDTask(void const *argument);
 void startUART_Task(void const *argument);
 void startTorqueCommand(void const *argument);
 void startBPSCheck(void const *argument);
+void OTCallback(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
@@ -191,6 +193,12 @@ int main(void) {
 	/* USER CODE BEGIN RTOS_SEMAPHORES */
 	/* add semaphores, ... */
 	/* USER CODE END RTOS_SEMAPHORES */
+
+	/* Create the timer(s) */
+	/* definition and creation of implausibility_Timer */
+	osTimerDef(implausibility_Timer, OTCallback);
+	implausibility_TimerHandle = osTimerCreate(osTimer(implausibility_Timer),
+			osTimerOnce, NULL);
 
 	/* USER CODE BEGIN RTOS_TIMERS */
 	/* start timers, add new ones, ... */
@@ -644,8 +652,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
-			GPIO_PIN_RESET);
+	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : PE3 */
 	GPIO_InitStruct.Pin = GPIO_PIN_3;
@@ -684,7 +691,7 @@ static void MX_GPIO_Init(void) {
 	/*Configure GPIO pin : Ready_to_Drive_Sound_Pin */
 	GPIO_InitStruct.Pin = Ready_to_Drive_Sound_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(Ready_to_Drive_Sound_GPIO_Port, &GPIO_InitStruct);
 
@@ -813,18 +820,47 @@ void startUART_Task(void const *argument) {
 void startTorqueCommand(void const *argument) {
 	/* USER CODE BEGIN startTorqueCommand */
 
+	//First need to send Drive Enable command in order to gain control over the motor controller
+	//Motor controller will timeout if it dosn't receive Drive Enable command or dosn't periodically receive Set Current command
+	//We can send the Drive Enable command once and then periodically send Set Current command to prevent it from timing out.
+	TxData[0] = 0x24; //Message ID for "Drive Enable" for motor controller
+	TxData[1] = 0x1F; //Node ID for Standard CAN message
+	TxData[2] = 1; // 1: TRUE enables drive, 0: FALSE disables drive
+
+	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+		Error_Handler();
+	}
+
 	/* Infinite loop */
 	for (;;) {
-//		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 
-//		TxData[0] = 20;
-//		TxData[1] = 1;
-//
-//		//Send out CAN message
-//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-//				!= HAL_OK) {
-//			Error_Handler();
-//		}
+		if ((appsVal[0] < 200) || (appsVal[0] > 2800)) {
+			//shutdown power to motor
+		}
+
+		if ((appsVal[1] < 400) || (appsVal[1] > 3900)) {
+			//shutdown power to motor
+		}
+
+		APPS_Mapping(&appsVal[0], &appsVal[1]);
+
+		if (abs(apps_PP[0] - apps_PP[1]) > 10) {
+			//start 100ms timer
+			osTimerStart(implausibility_TimerHandle, 100);
+			//need to figure out how to reset timer if >10% implausibility no longer exists
+		}
+
+		//Broadcast messages sent to motor controller to control motor torque
+		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+		TxData[1] = 0x1F; //Node ID for Standard CAN message
+		TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
+
+		//Send out CAN message
+		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+				!= HAL_OK) {
+			Error_Handler();
+		}
 
 		/**
 		 * Need to send CAN messages before motor controller times out
@@ -856,6 +892,15 @@ void startBPSCheck(void const *argument) {
 		osDelay(100);
 	}
 	/* USER CODE END startBPSCheck */
+}
+
+/* OTCallback function */
+void OTCallback(void const *argument) {
+	/* USER CODE BEGIN OTCallback */
+
+	//once 100ms timer expires, shutdown power to motor
+
+	/* USER CODE END OTCallback */
 }
 
 /**
