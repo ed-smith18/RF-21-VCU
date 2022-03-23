@@ -1,1 +1,2 @@
-freertos.c:63:6:vApplicationGetIdleTaskMemory	24	static
+freertos.c:66:6:vApplicationGetIdleTaskMemory	24	static
+freertos.c:79:6:vApplicationGetTimerTaskMemory	24	static

@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,11 +37,17 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+const uint32_t bpsThreshold = 3500; //need to set to store the signal value which corresponds to brakes being pressed
+const uint32_t bps_MIN = 500; //Below range ADC value for BPS
+const uint32_t bps_MAX = 3900; //Above range ADC value for BPS
+const uint32_t APPS_0_MIN = 200; //Below range ADC value for APPS_0
+const uint32_t APPS_0_MAX = 2800; //Above range ADC value for APPS_0
+const uint32_t APPS_1_MIN = 400; //Below range ADC value for APPS_1
+const uint32_t APPS_1_MAX = 3900; //Above range ADC value for APPS_1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -66,14 +73,16 @@ osThreadId uartTaskHandle;
 osThreadId Torque_CommandHandle;
 osThreadId BPS_Limit_CheckHandle;
 osTimerId implausibility_TimerHandle;
+
 /* USER CODE BEGIN PV */
 uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
 
 uint32_t bpsVal; //to store Brake Pressure Sensor value
-uint32_t bpsThreshold = 3500; //need to set to store the signal value which corresponds to brakes being pressed
 
 bool ready_to_drive = false;
+
+bool implausibility = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -835,41 +844,47 @@ void startTorqueCommand(void const *argument) {
 	for (;;) {
 		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 
-		if ((appsVal[0] < 200) || (appsVal[0] > 2800)) {
+		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
 			//shutdown power to motor
 		}
 
-		if ((appsVal[1] < 400) || (appsVal[1] > 3900)) {
+		if ((appsVal[1] < APPS_1_MIN) || (appsVal[1] > APPS_1_MAX)) {
 			//shutdown power to motor
 		}
 
 		APPS_Mapping(&appsVal[0], &appsVal[1]);
 
-		if (abs(apps_PP[0] - apps_PP[1]) > 10) {
-			//start 100ms timer
-			osTimerStart(implausibility_TimerHandle, 100);
-			//need to figure out how to reset timer if >10% implausibility no longer exists
-		}
+		if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
+			//reset the 100ms timer since there is no >10% implausibility
+			osTimerStop(implausibility_TimerHandle);
 
-		//Broadcast messages sent to motor controller to control motor torque
-		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-		TxData[1] = 0x1F; //Node ID for Standard CAN message
-		TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
+			//Broadcast messages sent to motor controller to control motor torque
+			TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+			TxData[1] = 0x1F; //Node ID for Standard CAN message
+			TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
 
-		//Send out CAN message
-		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-				!= HAL_OK) {
-			Error_Handler();
-		}
+			//Send out CAN message
+			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+					!= HAL_OK) {
+				Error_Handler();
+			} //end if
 
-		/**
-		 * Need to send CAN messages before motor controller times out
-		 * Recommended settings are to send out CAN message every half the timeout
-		 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
-		 * Need to configure actual timeout period for motor controller using DTI tool.
-		 * We will set it to 250ms for now.
-		 */
-		osDelay(250);
+			continue; //Will go back to beginning of loop to read APPS again
+			/**
+			 * Need to send CAN messages before motor controller times out
+			 * Recommended settings are to send out CAN message every half the timeout
+			 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
+			 * Need to configure actual timeout period for motor controller using DTI tool.
+			 * We will set it to 250ms for now.
+			 */
+
+		}//end if
+
+		//Should only get here if there is a >10% difference between APPS
+		//start 100ms timer
+		osTimerStart(implausibility_TimerHandle, 100);
+
+		osDelay(250); //May need to reduce the delay between sending out CAN messages
 	}
 	/* USER CODE END startTorqueCommand */
 }
@@ -885,7 +900,7 @@ void startBPSCheck(void const *argument) {
 	/* USER CODE BEGIN startBPSCheck */
 	/* Infinite loop */
 	for (;;) {
-		if ((bpsVal < 500) || (bpsVal > 3900)) {
+		if ((bpsVal < bps_MIN) || (bpsVal > bps_MAX)) {
 			//shutdown power to motor
 		}
 
@@ -899,7 +914,6 @@ void OTCallback(void const *argument) {
 	/* USER CODE BEGIN OTCallback */
 
 	//once 100ms timer expires, shutdown power to motor
-
 	/* USER CODE END OTCallback */
 }
 
