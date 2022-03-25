@@ -76,7 +76,6 @@ osTimerId implausibility_TimerHandle;
 
 /* USER CODE BEGIN PV */
 uint32_t appsVal[2]; //to store APPS ADC values
-uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
 
 uint32_t bpsVal; //to store Brake Pressure Sensor value
 
@@ -105,7 +104,7 @@ void OTCallback(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
-static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1);
+static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1, uint32_t apps_PP[]);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -745,7 +744,6 @@ static bool Ready_to_Drive(void) {
 
 	for (;;) {
 		//checking if brakes are pressed & start button is pressed at the same time
-		//not working when using bpsVal, but only working when using appsVal[0]
 		if ((bpsVal >= bpsThreshold)
 				&& (!HAL_GPIO_ReadPin(GPIOC, Start_Button_Pin))) {
 			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port, Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
@@ -758,7 +756,7 @@ static bool Ready_to_Drive(void) {
 
 } //end Ready_to_Drive()
 
-static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1) {
+static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1, uint32_t apps_PP[]) {
 
 	apps_PP[0] = 0.0518 * (*appsVal_0) - 29.53;
 	apps_PP[1] = 0.038 * (*appsVal_1) - 35.25;
@@ -797,6 +795,7 @@ void startUART_Task(void const *argument) {
 	/* USER CODE BEGIN startUART_Task */
 	char startBtn[16] = "";
 	char msg[256];
+	uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
 
 	/* Infinite loop */
 	for (;;) {
@@ -806,7 +805,7 @@ void startUART_Task(void const *argument) {
 			strcpy(startBtn, "Not Pressed");
 		}
 
-		APPS_Mapping(&appsVal[0], &appsVal[1]);
+		APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
 
 		//send out APPS values + APPS Pedal Position over UART
 		sprintf(msg,
@@ -828,6 +827,7 @@ void startUART_Task(void const *argument) {
 /* USER CODE END Header_startTorqueCommand */
 void startTorqueCommand(void const *argument) {
 	/* USER CODE BEGIN startTorqueCommand */
+	uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
 
 	//First need to send Drive Enable command in order to gain control over the motor controller
 	//Motor controller will timeout if it dosn't receive Drive Enable command or dosn't periodically receive Set Current command
@@ -836,13 +836,12 @@ void startTorqueCommand(void const *argument) {
 	TxData[1] = 0x1F; //Node ID for Standard CAN message
 	TxData[2] = 1; // 1: TRUE enables drive, 0: FALSE disables drive
 
-	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
-		Error_Handler();
-	}
+//	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+//		Error_Handler();
+//	}
 
 	/* Infinite loop */
 	for (;;) {
-		HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 
 		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
 			//shutdown power to motor
@@ -852,39 +851,39 @@ void startTorqueCommand(void const *argument) {
 			//shutdown power to motor
 		}
 
-		APPS_Mapping(&appsVal[0], &appsVal[1]);
+		APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
 
 		if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
 			//reset the 100ms timer since there is no >10% implausibility
 			osTimerStop(implausibility_TimerHandle);
-
 			//Broadcast messages sent to motor controller to control motor torque
 			TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
 			TxData[1] = 0x1F; //Node ID for Standard CAN message
 			TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
 
 			//Send out CAN message
-			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-					!= HAL_OK) {
-				Error_Handler();
-			} //end if
+//			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+//					!= HAL_OK) {
+//				Error_Handler();
+//			} //end if
 
-			continue; //Will go back to beginning of loop to read APPS again
 			/**
 			 * Need to send CAN messages before motor controller times out
 			 * Recommended settings are to send out CAN message every half the timeout
 			 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
 			 * Need to configure actual timeout period for motor controller using DTI tool.
-			 * We will set it to 250ms for now.
+			 * We will set it to 50ms for now.
 			 */
 
 		}//end if
 
 		//Should only get here if there is a >10% difference between APPS
 		//start 100ms timer
-		osTimerStart(implausibility_TimerHandle, 100);
+		else {
+			osTimerStart(implausibility_TimerHandle, 100);
+		}//end else
 
-		osDelay(250); //May need to reduce the delay between sending out CAN messages
+		osDelay(50); //May need to reduce the delay between sending out CAN messages
 	}
 	/* USER CODE END startTorqueCommand */
 }
@@ -912,7 +911,7 @@ void startBPSCheck(void const *argument) {
 /* OTCallback function */
 void OTCallback(void const *argument) {
 	/* USER CODE BEGIN OTCallback */
-
+	HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
 	//once 100ms timer expires, shutdown power to motor
 	/* USER CODE END OTCallback */
 }
