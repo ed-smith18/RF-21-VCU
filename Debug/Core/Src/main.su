@@ -16,7 +16,7 @@ main.c:759:13:APPS_Mapping	32	static
 main.c:775:6:startLEDTask	16	static
 main.c:794:6:startUART_Task	312	static
 main.c:828:6:startTorqueCommand	24	static
-main.c:898:6:startBPSCheck	16	static
-main.c:912:6:OTCallback	16	static
-main.c:927:6:HAL_TIM_PeriodElapsedCallback	16	static
-main.c:943:6:Error_Handler	4	static,ignoring_inline_asm
+main.c:903:6:startBPSCheck	16	static
+main.c:917:6:OTCallback	16	static
+main.c:935:6:HAL_TIM_PeriodElapsedCallback	16	static
+main.c:951:6:Error_Handler	4	static,ignoring_inline_asm

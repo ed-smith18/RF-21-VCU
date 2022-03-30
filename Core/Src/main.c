@@ -842,8 +842,13 @@ void startTorqueCommand(void const *argument) {
 
 	/* Infinite loop */
 	for (;;) {
+		HAL_GPIO_TogglePin(GPIOD, LD5_Pin);;
 
 		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
+			//May to need to have an outside function suspend this task since
+			//if we need to restart the tasks when values go back to within range,
+			//we can only do that from an outside/external function.
+			osThreadSuspend(Torque_CommandHandle);
 			//shutdown power to motor
 		}
 
@@ -880,6 +885,9 @@ void startTorqueCommand(void const *argument) {
 		//Should only get here if there is a >10% difference between APPS
 		//start 100ms timer
 		else {
+//			HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+//			osDelay(25);
+//			HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 			osTimerStart(implausibility_TimerHandle, 100);
 		}//end else
 
@@ -911,7 +919,10 @@ void startBPSCheck(void const *argument) {
 /* OTCallback function */
 void OTCallback(void const *argument) {
 	/* USER CODE BEGIN OTCallback */
-	HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
+	//not getting called properly after 100ms of implausibility
+//	HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
+//	osDelay(25);
+//	HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
 	//once 100ms timer expires, shutdown power to motor
 	/* USER CODE END OTCallback */
 }
