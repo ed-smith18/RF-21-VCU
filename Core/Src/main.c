@@ -81,6 +81,7 @@ uint32_t bpsVal; //to store Brake Pressure Sensor value
 
 bool ready_to_drive = false;
 
+bool APPS_Failure = false;
 bool implausibility = false;
 /* USER CODE END PV */
 
@@ -104,7 +105,8 @@ void OTCallback(void const *argument);
 
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
-static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1, uint32_t apps_PP[]);
+static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
+		uint32_t apps_PP[]);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -746,7 +748,12 @@ static bool Ready_to_Drive(void) {
 		//checking if brakes are pressed & start button is pressed at the same time
 		if ((bpsVal >= bpsThreshold)
 				&& (!HAL_GPIO_ReadPin(GPIOC, Start_Button_Pin))) {
-			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port, Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
+			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
+			HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+			Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
+			HAL_Delay(2000); //sound buzzer for 2 seconds
+			HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+			Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
 			return true;
 		} //end if
 
@@ -756,7 +763,8 @@ static bool Ready_to_Drive(void) {
 
 } //end Ready_to_Drive()
 
-static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1, uint32_t apps_PP[]) {
+static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
+		uint32_t apps_PP[]) {
 
 	apps_PP[0] = 0.0518 * (*appsVal_0) - 29.53;
 	apps_PP[1] = 0.038 * (*appsVal_1) - 35.25;
@@ -842,35 +850,47 @@ void startTorqueCommand(void const *argument) {
 
 	/* Infinite loop */
 	for (;;) {
-		HAL_GPIO_TogglePin(GPIOD, LD5_Pin);;
+		HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
 
 		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
 			//May to need to have an outside function suspend this task since
 			//if we need to restart the tasks when values go back to within range,
 			//we can only do that from an outside/external function.
-			osThreadSuspend(Torque_CommandHandle);
-			//shutdown power to motor
+			APPS_Failure = true;
+			//need to send out CAN message to set motor torque to zero
 		}
 
 		if ((appsVal[1] < APPS_1_MIN) || (appsVal[1] > APPS_1_MAX)) {
 			//shutdown power to motor
+			APPS_Failure = true;
+			//need to send out CAN message to set motor torque to zero
+		}
+
+		else {
+			APPS_Failure = false;
 		}
 
 		APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
 
 		if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
 			//reset the 100ms timer since there is no >10% implausibility
-			osTimerStop(implausibility_TimerHandle);
+
+			//reset timer using non-blocking code method
+
+			//osTimerStop(implausibility_TimerHandle);
 			//Broadcast messages sent to motor controller to control motor torque
 			TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
 			TxData[1] = 0x1F; //Node ID for Standard CAN message
 			TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
 
-			//Send out CAN message
+			if (!APPS_Failure) {
+				//Send out CAN message
 //			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
 //					!= HAL_OK) {
 //				Error_Handler();
 //			} //end if
+
+			}
 
 			/**
 			 * Need to send CAN messages before motor controller times out
@@ -880,7 +900,7 @@ void startTorqueCommand(void const *argument) {
 			 * We will set it to 50ms for now.
 			 */
 
-		}//end if
+		} //end if
 
 		//Should only get here if there is a >10% difference between APPS
 		//start 100ms timer
@@ -888,8 +908,13 @@ void startTorqueCommand(void const *argument) {
 //			HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 //			osDelay(25);
 //			HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
-			osTimerStart(implausibility_TimerHandle, 100);
-		}//end else
+			//osTimerStart(implausibility_TimerHandle, 100);
+			implausibility = true;
+			//start timer using non-blocking code method
+
+			// if timer has run for >100ms then send CAN message to set motor torque to zero
+
+		}			//end else
 
 		osDelay(50); //May need to reduce the delay between sending out CAN messages
 	}
@@ -908,7 +933,8 @@ void startBPSCheck(void const *argument) {
 	/* Infinite loop */
 	for (;;) {
 		if ((bpsVal < bps_MIN) || (bpsVal > bps_MAX)) {
-			//shutdown power to motor
+			//Shutdown power to motor
+			//osThreadSuspend(Torque_CommandHandle);
 		}
 
 		osDelay(100);
