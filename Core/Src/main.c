@@ -66,6 +66,8 @@ I2S_HandleTypeDef hi2s3;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim10;
+
 UART_HandleTypeDef huart2;
 
 osThreadId ledTaskHandle;
@@ -73,16 +75,18 @@ osThreadId uartTaskHandle;
 osThreadId Torque_CommandHandle;
 osThreadId BPS_Limit_CheckHandle;
 osTimerId implausibility_TimerHandle;
-
 /* USER CODE BEGIN PV */
 uint32_t appsVal[2]; //to store APPS ADC values
 
-uint32_t bpsVal; //to store Brake Pressure Sensor value
+uint32_t bpsVal[2]; //to store Brake Pressure Sensor values
 
 bool ready_to_drive = false;
 
 bool APPS_Failure = false;
 bool implausibility = false;
+
+uint16_t timer_100ms;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -97,6 +101,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_ADC3_Init(void);
 static void MX_CAN1_Init(void);
+static void MX_TIM10_Init(void);
 void startLEDTask(void const *argument);
 void startUART_Task(void const *argument);
 void startTorqueCommand(void const *argument);
@@ -165,10 +170,11 @@ int main(void) {
 	MX_ADC2_Init();
 	MX_ADC3_Init();
 	MX_CAN1_Init();
+	MX_TIM10_Init();
 	/* USER CODE BEGIN 2 */
-	HAL_ADC_Start_DMA(&hadc1, &appsVal[0], 1); //start the ADC for APPS 1 in DMA mode
-	HAL_ADC_Start_DMA(&hadc3, &bpsVal, 1); //start the ADC for Brake Pressure Sensor in DMA mode
-	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 in DMA mode
+	HAL_ADC_Start_DMA(&hadc1, &appsVal[0], 1); //start the ADC for APPS 1 (Linear Sensor) in DMA mode
+	HAL_ADC_Start_DMA(&hadc3, &bpsVal[0], 1); //start the ADC for Brake Pressure Sensors in DMA mode
+	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 (Rotational Sensor) in DMA mode
 
 	//Start the CAN Bus
 	HAL_CAN_Start(&hcan1);
@@ -582,6 +588,35 @@ static void MX_SPI1_Init(void) {
 }
 
 /**
+ * @brief TIM10 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM10_Init(void) {
+
+	/* USER CODE BEGIN TIM10_Init 0 */
+
+	/* USER CODE END TIM10_Init 0 */
+
+	/* USER CODE BEGIN TIM10_Init 1 */
+
+	/* USER CODE END TIM10_Init 1 */
+	htim10.Instance = TIM10;
+	htim10.Init.Prescaler = 1680 - 1;
+	htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim10.Init.Period = 65536 - 1;
+	htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim10) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM10_Init 2 */
+
+	/* USER CODE END TIM10_Init 2 */
+
+}
+
+/**
  * @brief USART2 Initialization Function
  * @param None
  * @retval None
@@ -662,7 +697,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : PE3 */
 	GPIO_InitStruct.Pin = GPIO_PIN_3;
@@ -746,7 +782,7 @@ static bool Ready_to_Drive(void) {
 
 	for (;;) {
 		//checking if brakes are pressed & start button is pressed at the same time
-		if ((bpsVal >= bpsThreshold)
+		if ((bpsVal[0] >= bpsThreshold)
 				&& (!HAL_GPIO_ReadPin(GPIOC, Start_Button_Pin))) {
 			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
 			HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
@@ -767,7 +803,22 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 		uint32_t apps_PP[]) {
 
 	apps_PP[0] = 0.0518 * (*appsVal_0) - 29.53;
+
+	if (apps_PP[0] < 0) {
+		apps_PP[0] = 0;
+	}
+	if (apps_PP[0] > 100) {
+		apps_PP[0] = 100;
+	}
+
 	apps_PP[1] = 0.038 * (*appsVal_1) - 35.25;
+
+	if (apps_PP[1] < 0) {
+		apps_PP[1] = 0;
+	}
+	if (apps_PP[1] > 100) {
+		apps_PP[1] = 100;
+	}
 
 } //end APPS_Mapping()
 
@@ -853,9 +904,7 @@ void startTorqueCommand(void const *argument) {
 		HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
 
 		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
-			//May to need to have an outside function suspend this task since
-			//if we need to restart the tasks when values go back to within range,
-			//we can only do that from an outside/external function.
+			//shutdown power to motor
 			APPS_Failure = true;
 			//need to send out CAN message to set motor torque to zero
 		}
@@ -868,53 +917,68 @@ void startTorqueCommand(void const *argument) {
 
 		else {
 			APPS_Failure = false;
-		}
 
-		APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
+			APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
 
-		if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
-			//reset the 100ms timer since there is no >10% implausibility
+			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
+				//reset the 100ms timer if started since there is no >10% implausibility
+				HAL_TIM_Base_Stop(&htim10);
+				timer_100ms = 0;
+				implausibility = false;
+				//osTimerStop(implausibility_TimerHandle);
 
-			//reset timer using non-blocking code method
+				//Broadcast messages sent to motor controller to control motor torque
+				TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+				TxData[1] = 0x1F; //Node ID for Standard CAN message
+				TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
 
-			//osTimerStop(implausibility_TimerHandle);
-			//Broadcast messages sent to motor controller to control motor torque
-			TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-			TxData[1] = 0x1F; //Node ID for Standard CAN message
-			TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
-
-			if (!APPS_Failure) {
-				//Send out CAN message
+				if (!APPS_Failure) {
+					//Send out CAN message
 //			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
 //					!= HAL_OK) {
 //				Error_Handler();
 //			} //end if
 
-			}
+				} //end if
 
-			/**
-			 * Need to send CAN messages before motor controller times out
-			 * Recommended settings are to send out CAN message every half the timeout
-			 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
-			 * Need to configure actual timeout period for motor controller using DTI tool.
-			 * We will set it to 50ms for now.
-			 */
+				/**
+				 * Need to send CAN messages before motor controller times out
+				 * Recommended settings are to send out CAN message every half the timeout
+				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
+				 * Need to configure actual timeout period for motor controller using DTI tool.
+				 * We will set it to 50ms for now.
+				 */
 
-		} //end if
+			} //end if
 
-		//Should only get here if there is a >10% difference between APPS
-		//start 100ms timer
-		else {
-//			HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
-//			osDelay(25);
-//			HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
-			//osTimerStart(implausibility_TimerHandle, 100);
-			implausibility = true;
-			//start timer using non-blocking code method
+			else {
+				//HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+				//osDelay(25);
+				//HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
+				//osTimerStart(implausibility_TimerHandle, 100);
+				//Should only get here if there is a >10% difference between APPS
 
-			// if timer has run for >100ms then send CAN message to set motor torque to zero
+				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
+				if(implausibility) {
+					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
+						//shutdown power to motor
+					}
+					else {
+						continue; //go back to beginning of loop (not sure if needed)
+					}
+				}//end if
+				else {
+				//start 100ms timer if not started
+				HAL_TIM_Base_Start(&htim10);
+				timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
+				implausibility = true;
 
-		}			//end else
+				}//end else
+
+
+			} //end else
+
+		} //end else
 
 		osDelay(50); //May need to reduce the delay between sending out CAN messages
 	}
@@ -932,7 +996,7 @@ void startBPSCheck(void const *argument) {
 	/* USER CODE BEGIN startBPSCheck */
 	/* Infinite loop */
 	for (;;) {
-		if ((bpsVal < bps_MIN) || (bpsVal > bps_MAX)) {
+		if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
 			//Shutdown power to motor
 			//osThreadSuspend(Torque_CommandHandle);
 		}
@@ -945,11 +1009,11 @@ void startBPSCheck(void const *argument) {
 /* OTCallback function */
 void OTCallback(void const *argument) {
 	/* USER CODE BEGIN OTCallback */
-	//not getting called properly after 100ms of implausibility
+//not getting called properly after 100ms of implausibility
 //	HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
 //	osDelay(25);
 //	HAL_GPIO_TogglePin(GPIOD, LD5_Pin);
-	//once 100ms timer expires, shutdown power to motor
+//once 100ms timer expires, shutdown power to motor
 	/* USER CODE END OTCallback */
 }
 
